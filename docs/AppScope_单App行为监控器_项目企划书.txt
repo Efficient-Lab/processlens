@@ -1,0 +1,168 @@
+processlens
+单 App 文件与网络行为监控器 · 项目企划书
+See what an app reads, writes, and connects to.
+文档类型	产品项目企划
+项目状态	免费品牌项目 / Apple 权限审批前置
+平台	macOS / Windows
+日期	2026-09-24
+
+本文档用于产品范围、技术路线和优先级决策，不等同于最终 PRD。
+
+
+1. 项目摘要
+一句话定位
+用户选择一个应用并开始记录，AppScope 只聚合该应用及其相关子进程的文件访问与网络连接，最终生成普通人能读懂的行为报告。
+
+项目项	定义
+核心用户	开发者、隐私敏感用户、power user、安全研究入门用户、经常试用 AI/小众客户端的人
+核心痛点	现有系统工具能抓大量事件，但文件行为与网络行为分散、噪音大、难以归属于“一个 App”并总结
+核心价值	把“某个 App 在这段时间做了什么”整合成 Files + Network + Timeline 的单一报告
+商业模式	免费、不登录、默认无遥测；用于品牌、GitHub/HN/Reddit 传播和技术口碑
+产品边界	观察与报告，不做防火墙、不拦截、不解密 HTTPS、不下恶意软件结论
+
+2. 为什么这个定位成立
+用户问的是“这个 App 做了什么”，而不是“系统上发生了多少底层事件”。
+Files 和 Network 分开看价值有限，合并到同一 Session 后可以建立有时间顺序的上下文。
+单 App 监控天然抑制噪音，适合把技术工具包装成更大众的 privacy/developer utility。
+免费策略降低安装系统扩展/授权权限的心理门槛，同时适合传播演示。
+关键前提
+macOS 的精准文件事件归因计划依赖 Endpoint Security；该 entitlement 需要向 Apple 申请。项目应把 entitlement 获批视为正式 macOS 版本的 Go/No-Go 条件，而不是开发完成后的发布细节。
+
+3. 用户场景
+场景	用户问题	AppScope 输出
+试用新 AI 客户端	它有没有碰我的 Documents、SSH、Git 配置？连了哪些服务？	敏感路径访问 + 域名/IP + 时间线
+开发调试	我的 App 为什么启动就写几千个文件或产生意外连接？	按目录/操作/进程汇总；高频路径与连接目标
+隐私检查	这个小工具是不是在后台连统计/广告域名？	目标域名、端口、流量、首次/最后连接时间
+卸载前检查	这个 App 的数据大概散在哪些位置？	写入/创建过的目录聚合，辅助用户理解残留范围
+行为对比	升级前后某 App 行为是否变化？	两个 Session 的差异报告（P1）
+
+4. 产品原则
+一次只监控一个“Responsible App”，但内部必须跟踪其 helper / renderer / child process，而不是只盯单 PID。
+只陈述观察事实：READ、WRITE、CONNECT、traffic 等；不从时间相关性推断“这个文件一定被上传”。
+报告优先于原始日志：默认给 Summary；高级用户再展开 Timeline 和 raw event。
+不阻止、不注入、不 MITM，不把项目升级成防火墙或 EDR。
+全本地存储 Session；导出由用户主动触发。
+5. 核心用户流程
+1.从已安装 App 列表中选择目标应用。
+2.点击 Start Monitoring；AppScope 建立该应用身份与 process tree 追踪。
+3.用户正常使用目标 App。
+4.点击 Stop；系统停止收集并生成 Session Report。
+5.用户先看 Summary，再按 Files / Network / Timeline 下钻。
+6.可导出 JSON/CSV/Markdown 报告，方便开发调试或分享。
+6. P0 信息架构
+页面/Tab	内容
+Home	选择 App；最近 Session；权限状态；Start
+Summary	监控时长、文件事件数、网络目标数、上传/下载量、敏感路径摘要
+Files	Read / Write / Create / Delete / Rename；按路径、目录、进程聚合
+Network	Domain/IP、Port、Protocol、连接次数、首末时间、流量统计
+Timeline	文件和网络事件按时间混排，支持过滤
+Processes	主进程、Helper、Renderer、XPC/子进程及归属关系
+Export	JSON / CSV / Markdown；默认不包含不必要的文件内容
+
+7. P0 功能范围与明确不做
+P0 做	P0 不做
+单 App session recording	全系统长期监控 / EDR
+Process tree / helper 归属	对未知进程做“恶意/安全”评分
+文件 READ/WRITE/CREATE/DELETE/RENAME	文件内容抓取
+网络 domain/IP/port/traffic 元数据	HTTPS MITM、URL path 解密、payload 抓包
+Summary + Timeline + 过滤	实时阻断网络或文件访问
+本地报告导出	云端账户、社区风险数据库
+
+8. “单 App”归属模型
+不能使用“选择一个 PID”作为产品模型。现代应用常由主进程、Helper、Renderer、XPC Service、Updater 等共同完成工作。AppScope 应维护 App Identity → Executables → Live Processes → Descendants 的映射。
+层级	示例	用途
+App Identity	Bundle ID / Signing ID / Windows executable identity	跨启动稳定识别目标应用
+Executable	Main binary / Helper / Renderer	把多个二进制归属于同一产品
+Process	PID + start time	本次 Session 中的实时实例
+Descendant	spawned child process	防止网络/文件行为被 Helper 漏掉
+
+9. macOS 技术方案
+能力	建议技术	关键约束
+进程 + 文件事件	Endpoint Security System Extension	Endpoint Security entitlement 需要向 Apple 申请；用户安装并授权 System Extension / Full Disk Access
+网络流	Network Extension Content Filter System Extension	Developer ID 直接分发需对应 Network Extension entitlement/value 和系统扩展配置
+UI / 数据层	Tauri + Rust + SQLite	系统扩展建议用原生 Swift/Obj-C/C 封装，再通过 IPC 与主 App 通信
+签名分发	Developer ID + notarization	不走 Mac App Store 仍需正确签名和公证
+
+macOS 发布门槛
+Apple 官方 Endpoint Security 示例明确要求先申请 Endpoint Security entitlement；System Extension 需要用户激活，并在示例流程中授予 Full Disk Access。Network Extension 直接分发也有 Developer ID 对应 entitlement 配置。免费/开源并不会绕过这些系统要求。
+
+10. Windows 技术方案
+能力	建议技术	说明
+文件 I/O	ETW FileIo events	Windows ETW 提供 Create / Read / Write / Delete / Rename 等文件事件，可结合 process/thread 信息做归属
+网络	WFP / ALE 层能力	WFP 支持按 application / user / connection 过滤；P0 只观察元数据，不做阻断
+权限服务	Privileged Windows service（按实际实现需要）	负责系统级采集，GUI 通过 IPC 获取筛选后的 Session 数据
+UI / Core	Tauri + Rust	与 macOS 共用数据模型、Summary、Timeline、导出逻辑
+
+11. 事件数据模型
+对象	关键字段
+Session	target_app, start/end, OS, version, permissions
+Process	pid, ppid, executable, signature/bundle identity, start/end
+FileEvent	timestamp, process, operation, path, bytes(optional), result
+NetFlow	timestamp, process, protocol, local/remote endpoint, hostname(if available), bytes up/down
+Aggregate	folder/domain/process counts, totals, first/last seen
+
+12. 报告设计
+默认 Summary 应该像“行为账单”，而不是 Procmon/Wireshark 日志。示例结构：
+区块	展示
+Sensitive Access	~/.ssh、Documents、Downloads、浏览器 profile 等可配置敏感路径是否被读取/写入
+Top Writes	写入最多的目录、文件数量、估算字节数
+New Files	本 Session 新建文件与目录
+Network Destinations	域名/IP、端口、连接数、上传/下载量
+Timeline Correlation	只并排展示时序，例如“READ file → 1s 后 outbound traffic”，明确标记为时间相关而非因果证明
+
+13. 隐私与安全边界
+默认不采集文件内容，不读取网络 payload；只记录行为元数据。
+默认不上传 Session；应用自身应尽量无遥测，或将可选遥测完全独立且默认关闭。
+导出前提示可能包含用户名、路径、域名/IP 等敏感信息。
+不把“访问敏感路径”直接标成恶意；只用中性标签，例如 Sensitive Location Access。
+不声称可以证明某个具体文件被上传，除非未来有更强可验证机制；P0 只展示时序。
+14. 商业与传播策略
+项	建议
+价格	永久免费；不做功能阉割
+账户	不需要
+开源	建议至少开源采集器/系统扩展或核心协议，以提高安全工具的可验证性和社区信任；是否全开源可后续决定
+品牌入口	About / 官网明确“Built by …”，展示其他收费产品，但不弹广告
+内容传播	用 AppScope 对热门新 App 做客观 Session 报告；展示事实，不做“偷偷上传/恶意”等未经证实结论
+目标	GitHub stars、HN/Reddit 讨论、开发者口碑、官网自然流量，而非直接收入
+
+15. 竞品/替代品与差异化
+工具	强项	AppScope 差异
+Little Snitch	macOS 网络连接可视化与控制	不做 firewall；把文件行为与网络行为合并成单 App Session 报告
+FSMonitor	macOS 文件系统事件监控	不只列事件；负责 App 归属、聚合和与网络时间线结合
+Process Monitor	Windows 极强的文件/Registry/进程底层事件	面向普通开发者/power user 的单 App Summary，而非专业调试日志
+Wireshark	网络包分析	不抓 payload；重点是 app attribution 与可读行为报告
+
+16. 主要风险与控制
+风险	影响	控制
+Apple entitlement 未获批/审批慢	macOS 核心功能无法正式分发	第一天就提交申请；先做 PoC；若延迟则 Windows beta 先行
+Helper/XPC 归属错误	漏掉或错算行为	基于签名/Bundle/父子进程多信号归属；显示 Process 详情供核对
+网络域名无法完整解析	只能看到 IP 或 hostname 不完整	诚实展示可获得字段；不伪造 URL；DNS/flow 关联作为增强
+事件量大影响性能	目标 App 或系统变慢	内核层尽早过滤/用户层批处理；ring buffer；只保存目标 App
+用户把时序当因果	误判隐私行为	UI 文案明确“Observed sequence, not proof of upload”
+免费项目维护成本	拖累收费产品开发	严格 P0 边界；不做 blocking / IDS / malware DB / HTTPS decrypt
+
+17. 开发顺序 / Gate
+阶段	工作	Gate
+G0 权限申请	提交 Apple Endpoint Security entitlement；确认 Network Extension Developer ID 配置	申请已提交；明确审批路径
+G1 PoC	macOS/Windows 各抓取一个目标 App 的文件事件和网络连接，能关联 process tree	单 Session 数据可信
+G2 Core	统一事件模型、SQLite、聚合、Timeline、Export	10–30 分钟 Session 稳定
+G3 UX	App Picker、Summary、敏感路径、域名聚合、权限 onboarding	非安全专业用户可看懂
+G4 Beta	签名、公证、安装/卸载、崩溃恢复、性能	真实用户环境可持续使用
+
+18. MVP 验收标准
+选择一个 App 后，主进程及主要 helper/child 的事件能被统一归属。
+Files 能稳定展示至少 READ/WRITE/CREATE/DELETE/RENAME；Network 能展示目标地址、端口、连接次数和基础流量统计。
+Summary 让用户不用阅读 raw event 就能回答“它碰了哪些重要位置、主要连到哪里”。
+监控本身不明显拖慢被监控 App；高事件量场景不会导致 UI 卡死。
+报告中不把时间相关性误写成数据泄露结论。
+macOS 正式版在 entitlement、签名、公证和用户权限流程上完全合规。
+19. Go / No-Go 决策
+建议：Conditional Go。
+概念和传播价值都成立，但 macOS Endpoint Security entitlement 是硬门槛。立即申请 entitlement，同时做最小 PoC；若 Apple 权限路径可行，则继续做免费 1.0。若长期无法获批，不建议为了绕限制把产品退化成“前后快照工具”。
+
+附录：官方技术参考
+Apple - Endpoint Security / Monitoring System Events with Endpoint Security：https://developer.apple.com/documentation/endpointsecurity/monitoring-system-events-with-endpoint-security
+Apple - System Extensions：https://developer.apple.com/documentation/systemextensions
+Apple - Network Extensions Entitlement：https://developer.apple.com/documentation/bundleresources/entitlements/com.apple.developer.networking.networkextension
+Microsoft - ETW FileIo：https://learn.microsoft.com/windows/win32/etw/fileio
+Microsoft - Windows Filtering Platform：https://learn.microsoft.com/windows/win32/fwp/about-windows-filtering-platform

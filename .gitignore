@@ -1,0 +1,7 @@
+# macOS
+.DS_Store
+# 构建产物
+target/
+build/
+dist/
+node_modules/
