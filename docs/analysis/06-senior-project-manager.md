@@ -1,6 +1,6 @@
 # ProcessLens 交付可行性分析（资深项目经理视角）
 
-> 分析对象：`docs/ProcessLens_需求文档.md`（Draft v1.0，主依据）、`docs/AppScope_单App行为监控器_项目企划书.txt`（上游企划）
+> 分析对象：`docs/ProcessLens_需求文档.md`（Draft v1.0，主依据）、`docs/ProcessLens_单App行为监控器_项目企划书.txt`（上游企划）
 > 分析日期：2026-09-24
 > 视角：交付可行性 —— Gate 可判定性、关键路径、需求-阶段映射、范围与决策机制
 
@@ -38,7 +38,7 @@
 | PM-R10 | 中 | OS 版本兼容矩阵未定义：macOS 最低支持版本（ES API/系统扩展行为随版本变化）、Windows 10/11 均无约束，G4 测试范围不可界定 | §7 只列技术选型，无版本范围 | 新增 NFR：明确 macOS / Windows 最低支持版本与 G4 测试矩阵 |
 | PM-R11 | 低 | 版本与更新策略整体缺失：版本号规则、是否自动更新（Sparkle/WinSparkle 或手动下载）、更新与系统扩展版本协同均无条目 | 全文无 | 新增 NFR-5"版本与更新"小节，至少覆盖版本号规则与更新分发方式决策点 |
 | PM-R12 | 低 | 企划书 §14 的"建议至少开源采集器/系统扩展"与"About/官网品牌入口"两条上游决策未落入需求稿，也未显式剔除 | 需求稿全文无对应条目 | 立项决策项：要么转为需求（开源范围、About 页 FR），要么在需求稿中显式标注为"暂缓决策"并写明决策时点 |
-| PM-R13 | 低 | 上游文档引用断链且产品更名未记录：需求稿页眉引用 `docs/ProcessLens_单App行为监控器_项目企划书.txt`，实际文件为 `AppScope_单App行为监控器_项目企划书.txt`；AppScope→ProcessLens 的更名无出处 | 文档头表格 | 修正引用文件名；在需求稿中补一行更名说明，避免后续文档检索歧义 |
+| PM-R13 | 低 | 上游文档引用断链且产品更名未记录：需求稿页眉引用 `docs/ProcessLens_单App行为监控器_项目企划书.txt`，实际文件为 `ProcessLens_单App行为监控器_项目企划书.txt`；AppScope→ProcessLens 的更名无出处 | 文档头表格 | 修正引用文件名；在需求稿中补一行更名说明，避免后续文档检索歧义 |
 | PM-R14 | 低 | FR-6.1 要求用户授予 Full Disk Access，但未论证 FDA 是否为 ES 采集的必要条件；若非必需，会不必要地抬高 onboarding 门槛（FR-6.5 的权限引导复杂度随之上升） | FR-6.1、企划书 §9 | 列入 G1 技术澄清项：确认 ES 事件采集对 FDA 的实际依赖程度，据此调整 FR-6.1 措辞 |
 
 ## 需求-阶段映射缺口
@@ -80,7 +80,7 @@
 - **PM-M03｜§10 G1/G3/G4 Gate**：补度量（对应 PM-R06）：G1"对照基线工具事件覆盖率 ≥ 约定阈值且归属无误判案例"；G3"≥5 名目标用户独立完成核心问题作答"；G4"beta 用户 ≥N 名、连续使用 ≥2 周、崩溃率 ≤X%"。
 - **PM-M04｜§10 阶段表**：增加"需求覆盖"列，落实上节映射表，每条 P0 需求有唯一主归属阶段。
 - **PM-M05｜§11 风险表**：增加三行——NE entitlement 审批不确定性、Windows 代码签名/SmartScreen、需求变更无评审流程；外部依赖清单补 Windows 签名证书。
-- **PM-M06｜文档头**：上游文档文件名改为 `docs/AppScope_单App行为监控器_项目企划书.txt`，并记录 AppScope→ProcessLens 更名。
+- **PM-M06｜文档头**：上游文档文件名改为 `docs/ProcessLens_单App行为监控器_项目企划书.txt`，并记录 AppScope→ProcessLens 更名。
 
 ### 新增条目（建议编号）
 
@@ -97,15 +97,15 @@
 
 ### 已读文件
 - `docs/ProcessLens_需求文档.md`：FR/NFR 条目、§8 Scope Exclusion、§10 里程碑、§11 风险
-- `docs/AppScope_单App行为监控器_项目企划书.txt`：§16 风险、§17 Gate、§19 Go/No-Go、§14 开源与品牌策略
+- `docs/ProcessLens_单App行为监控器_项目企划书.txt`：§16 风险、§17 Gate、§19 Go/No-Go、§14 开源与品牌策略
 
 ### 关键定位
 - `ProcessLens_需求文档.md:36`：§1.4 Go/No-Go 前提（entitlement 为 macOS 正式版门槛）
 - `ProcessLens_需求文档.md:250-256`：§10 G0–G4 阶段与 Gate 定义
 - `ProcessLens_需求文档.md:229`：§8"不退化为快照工具"
 - `ProcessLens_需求文档.md:262`：§11"延迟则 Windows beta 先行"唯一出现处
-- `AppScope_企划书.txt:162-164`：§19 Conditional Go 与"长期无法获批"表述
-- `AppScope_企划书.txt:122-124`：§14 开源建议与品牌入口（需求稿未承接）
+- `ProcessLens_企划书.txt:162-164`：§19 Conditional Go 与"长期无法获批"表述
+- `ProcessLens_企划书.txt:122-124`：§14 开源建议与品牌入口（需求稿未承接）
 
 ### 尚不确定/需用户确认
 - NE content-filter entitlement 的当前 Apple 审批要求（PM-R02 为立项第一周需核实的事实项，未联网验证）

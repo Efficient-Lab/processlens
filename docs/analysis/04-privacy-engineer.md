@@ -1,7 +1,7 @@
 # ProcessLens 隐私工程师视角分析
 
 > 分析对象：`docs/ProcessLens_需求文档.md`（PRD Draft v1.0，主依据）
-> 参照文档：`docs/AppScope_单App行为监控器_项目企划书.txt`（上游企划）
+> 参照文档：`docs/ProcessLens_单App行为监控器_项目企划书.txt`（上游企划）
 > 视角：Privacy Engineering —— 关注被采集元数据的完整生命周期（采集 → 存储 → 展示 → 导出 → 删除）是否有对应的技术控制，而非仅看"不采内容"的承诺。
 > 日期：2026-09-24
 

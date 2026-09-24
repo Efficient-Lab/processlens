@@ -1,7 +1,7 @@
 # ProcessLens 安全架构综合分析
 
 > 视角：Security Architect | 日期：2026-09-24
-> 主依据：`docs/ProcessLens_需求文档.md`（PRD Draft v1.0），上游：`docs/AppScope_单App行为监控器_项目企划书.txt`
+> 主依据：`docs/ProcessLens_需求文档.md`（PRD Draft v1.0），上游：`docs/ProcessLens_单App行为监控器_项目企划书.txt`
 > 严重度分级：Critical / High / Medium / Low / Informational
 
 ---
@@ -93,11 +93,11 @@ PRD 在**产品层隐私边界**上做得很扎实：只观察不拦截（§1.3�
 
 ### 已读文件
 - `docs/ProcessLens_需求文档.md`：PRD 全文，逐条核对 FR-1~FR-6、NFR-1~4、§8 排除项、§9~11 验收与风险
-- `docs/AppScope_单App行为监控器_项目企划书.txt`：上游企划，§9/§10 技术方案、§13 隐私边界、§14 开源建议
+- `docs/ProcessLens_单App行为监控器_项目企划书.txt`：上游企划，§9/§10 技术方案、§13 隐私边界、§14 开源建议
 
 ### 关键定位
 - `ProcessLens_需求文档.md` FR-6.4：IPC 仅一句功能描述，无安全要求 → T-01
 - `ProcessLens_需求文档.md` FR-6.2 + §7.1：Content Filter 机制可触达 payload → T-03
 - `ProcessLens_需求文档.md` FR-2.2 + §6：SQLite 明文存敏感路径/域名 → T-04
 - `ProcessLens_需求文档.md` §10 G4：无更新机制 → T-05
-- `AppScope_企划书.txt` §14：建议开源采集器（应提升为需求）→ SEC-FR-7(d)
+- `ProcessLens_企划书.txt` §14：建议开源采集器（应提升为需求）→ SEC-FR-7(d)

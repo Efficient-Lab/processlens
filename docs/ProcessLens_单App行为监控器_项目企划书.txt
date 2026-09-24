@@ -11,7 +11,7 @@ See what an app reads, writes, and connects to.
 
 1. 项目摘要
 一句话定位
-用户选择一个应用并开始记录，AppScope 只聚合该应用及其相关子进程的文件访问与网络连接，最终生成普通人能读懂的行为报告。
+用户选择一个应用并开始记录，ProcessLens 只聚合该应用及其相关子进程的文件访问与网络连接，最终生成普通人能读懂的行为报告。
 
 项目项	定义
 核心用户	开发者、隐私敏感用户、power user、安全研究入门用户、经常试用 AI/小众客户端的人
@@ -29,7 +29,7 @@ See what an app reads, writes, and connects to.
 macOS 的精准文件事件归因计划依赖 Endpoint Security；该 entitlement 需要向 Apple 申请。项目应把 entitlement 获批视为正式 macOS 版本的 Go/No-Go 条件，而不是开发完成后的发布细节。
 
 3. 用户场景
-场景	用户问题	AppScope 输出
+场景	用户问题	ProcessLens 输出
 试用新 AI 客户端	它有没有碰我的 Documents、SSH、Git 配置？连了哪些服务？	敏感路径访问 + 域名/IP + 时间线
 开发调试	我的 App 为什么启动就写几千个文件或产生意外连接？	按目录/操作/进程汇总；高频路径与连接目标
 隐私检查	这个小工具是不是在后台连统计/广告域名？	目标域名、端口、流量、首次/最后连接时间
@@ -44,7 +44,7 @@ macOS 的精准文件事件归因计划依赖 Endpoint Security；该 entitlemen
 全本地存储 Session；导出由用户主动触发。
 5. 核心用户流程
 1.从已安装 App 列表中选择目标应用。
-2.点击 Start Monitoring；AppScope 建立该应用身份与 process tree 追踪。
+2.点击 Start Monitoring；ProcessLens 建立该应用身份与 process tree 追踪。
 3.用户正常使用目标 App。
 4.点击 Stop；系统停止收集并生成 Session Report。
 5.用户先看 Summary，再按 Files / Network / Timeline 下钻。
@@ -69,7 +69,7 @@ Summary + Timeline + 过滤	实时阻断网络或文件访问
 本地报告导出	云端账户、社区风险数据库
 
 8. “单 App”归属模型
-不能使用“选择一个 PID”作为产品模型。现代应用常由主进程、Helper、Renderer、XPC Service、Updater 等共同完成工作。AppScope 应维护 App Identity → Executables → Live Processes → Descendants 的映射。
+不能使用“选择一个 PID”作为产品模型。现代应用常由主进程、Helper、Renderer、XPC Service、Updater 等共同完成工作。ProcessLens 应维护 App Identity → Executables → Live Processes → Descendants 的映射。
 层级	示例	用途
 App Identity	Bundle ID / Signing ID / Windows executable identity	跨启动稳定识别目标应用
 Executable	Main binary / Helper / Renderer	把多个二进制归属于同一产品
@@ -122,11 +122,11 @@ Timeline Correlation	只并排展示时序，例如“READ file → 1s 后 outbo
 账户	不需要
 开源	建议至少开源采集器/系统扩展或核心协议，以提高安全工具的可验证性和社区信任；是否全开源可后续决定
 品牌入口	About / 官网明确“Built by …”，展示其他收费产品，但不弹广告
-内容传播	用 AppScope 对热门新 App 做客观 Session 报告；展示事实，不做“偷偷上传/恶意”等未经证实结论
+内容传播	用 ProcessLens 对热门新 App 做客观 Session 报告；展示事实，不做“偷偷上传/恶意”等未经证实结论
 目标	GitHub stars、HN/Reddit 讨论、开发者口碑、官网自然流量，而非直接收入
 
 15. 竞品/替代品与差异化
-工具	强项	AppScope 差异
+工具	强项	ProcessLens 差异
 Little Snitch	macOS 网络连接可视化与控制	不做 firewall；把文件行为与网络行为合并成单 App Session 报告
 FSMonitor	macOS 文件系统事件监控	不只列事件；负责 App 归属、聚合和与网络时间线结合
 Process Monitor	Windows 极强的文件/Registry/进程底层事件	面向普通开发者/power user 的单 App Summary，而非专业调试日志

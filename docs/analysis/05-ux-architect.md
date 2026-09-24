@@ -4,7 +4,7 @@
 |------|------|
 | 分析视角 | UX 架构 / 信息架构 / 交互状态覆盖 |
 | 主依据 | `docs/ProcessLens_需求文档.md`（PRD Draft v1.0） |
-| 上游依据 | `docs/AppScope_单App行为监控器_项目企划书.txt` |
+| 上游依据 | `docs/ProcessLens_单App行为监控器_项目企划书.txt` |
 | 日期 | 2026-09-24 |
 
 ---

@@ -1,7 +1,7 @@
 # ProcessLens 桌面端资深工程师视角分析
 
 > 分析对象：`docs/ProcessLens_需求文档.md`（PRD Draft v1.0，主依据）
-> 参照文档：`docs/AppScope_单App行为监控器_项目企划书.txt`（上游企划）
+> 参照文档：`docs/ProcessLens_单App行为监控器_项目企划书.txt`（上游企划）
 > 视角：Desktop App Engineering —— 关注系统扩展/特权服务的真实能力边界、IPC 与进程边界、签名分发链路、性能预算可验证性。
 > 日期：2026-09-24
 >
