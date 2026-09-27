@@ -33,9 +33,9 @@
 | TR-01 | 高 | FR-3.1、§7.1 | ES 无 READ 事件；"读"只能由 OPEN(FREAD)/CLOSE(modified) 近似，语义为"打开"而非"实际读取"；缓存读、长持 fd 重读不可见（均待实测验证） | 数据模型 operation 按平台事件语义重定义；Summary/Files 文案区分"打开读取"与"写入"；G1 实测事件语义矩阵（含 macOS 版本下限） |
 | TR-02 | 高 | FR-4.1/4.2、§7.1、FR-5.2 | NE flow 元数据无 bytes；流量统计需 NEFilterPacketProvider 逐包经过扩展（不读 payload，但全量流量过通道），吞吐/延迟成本未知（待实测验证） | G1 设专项：包级通道吞吐基准 + 目标 App 网速回归测试；若成本不可接受，macOS 降级为连接数/时长/端点，bytes 标"可得时"（Windows 侧有替代源，见 TR-06） |
 | TR-03 | 高 | §1.4、§7.1、§10 G0 | NE content-filter entitlement 同为受限授权需 Apple 审批（待实测验证流程）〔勘误：NE 无需审批、自助开启，2026-09-27 核实〕；获批前开发联调可能依赖 profile 或 SIP 降级环境〔已核实：SIP-off 可运行〕 | G0 同时提交 ES + NE 两项申请〔勘误：仅 ES 需申请〕；Go/No-Go 改为双门槛〔勘误：仍为 ES 单门槛〕；G1 排期预留审批等待期的降级验证路径 |
-| TR-04 | 高 | §7.2、FR-6.3、FR-3.x | ETW FileIo 不含路径；FileObject→path 映射需消费 Name/FileCreate 流并在丢事件、对象复用、rename 链下保持正确（待实测验证准确率） | G1 专项验证映射管线；定义映射缺失时的降级展示（file object id + 卷路径）；备选 minifilter 驱动（路径准确但需驱动签名，分发门槛上升，列为 Plan B） |
-| TR-05 | 高 | NFR-1.2、§7.2 | FileIo 为全系统事件流，无法按 PID 内核过滤（待实测验证 provider 过滤能力）；高负载下用户态过滤成本与 ETW 会话缓冲溢出丢事件是真实风险 | NFR-1.2 改为"按平台能力尽早过滤"；ETW 会话缓冲、批大小、丢弃计数纳入性能预算；Session 元数据落 `lost_events` 计数并在报告可见 |
-| TR-06 | 中 | FR-4.1/4.2、§7.2 | WFP ALE net events 提供端点/appId/userId，无 bytes（待实测验证是否含 PID） | Windows 流量字节用 ETW Kernel-Network（含 PID + size，无驱动，待实测验证字段）或 TCPIP ESTATS 轮询补足；无需为 bytes 上 callout 驱动 |
+| TR-04 | 高 | §7.2、FR-6.3、FR-3.x | ETW FileIo 不含路径；FileObject→path 映射需消费 Name/FileCreate 流并在丢事件、对象复用、rename 链下保持正确（准确率待 G1 实测） | G1 专项验证映射管线；定义映射缺失时的降级展示（file object id + 卷路径）；备选 minifilter 驱动（路径准确但需驱动签名，分发门槛上升，列为 Plan B）→ **2026-09-27 已实测字段结构：Create/Name/Rename 族带全路径，Read/Write 族仅 FileObject+IOSize，论断证实，见 `08-windows-采集路径实测.md`** |
+| TR-05 | 高 | NFR-1.2、§7.2 | FileIo 为全系统事件流，无法按 PID 内核过滤（已实测：2 秒约 4.6 万条全系统事件、`EventsLost=0`，见 `08-windows-采集路径实测.md`）；高负载下用户态过滤成本与 ETW 会话缓冲溢出丢事件是真实风险 | NFR-1.2 改为"按平台能力尽早过滤"（已回写）；ETW 会话缓冲、批大小、丢弃计数纳入性能预算；Session 元数据落 `lost_events` 计数并在报告可见 |
+| TR-06 | 中 | FR-4.1/4.2、§7.2 | WFP ALE net events 提供端点/appId/userId，无 bytes、无 PID（2026-09-27 已实测：netsh 导出与 SDK 头文件双向确认，见 `08` 文档） | **已实测成立**：ETW Kernel-Network 事件含 PID + 端点四元组 + size + 连接生命周期，bytes 走通无需 callout 驱动；无需 ESTATS 兜底 |
 | TR-07 | 中 | FR-4.2/4.4、FR-5.4、UC-1/3 | hostname 覆盖率两平台都低：NE remoteEndpoint 在 macOS 上通常只有 IP（待实测验证），WFP 侧本就无 hostname；不做 DNS 关联则"域名"列大面积为空，Summary 核心卖点落空 | FR-4.4 DNS/flow 关联升为 P0（观察 DNS 流量或系统解析缓存，不抓 payload）；诚实展示 IP + 可得字段 |
 | TR-08 | 中 | FR-1.4、FR-2.3 | 中途 attach：NE filter 只见激活后新建的 flow，既有长连接不可见（待实测验证）；既有进程的 FileObject→path 映射同样缺失 | 补"Session 启动基线快照"需求：枚举目标进程树 + 既有连接快照（macOS proc_pidinfo 类接口 / Windows GetExtendedTcpTable，待实测验证） |
 | TR-09 | 中 | FR-6.1、§7.1 | FDA 对 ES 事件投递范围的影响未实测：无 FDA 时受保护目录（Safari、邮件、TCC 保护位置）的事件/路径是否完整下发（待实测验证） | G1 实测"无 FDA 事件盲区矩阵"；若存在盲区，把 FDA 从"建议授予"升级为采集正确性硬依赖并在权限引导中说明原因 |
@@ -43,7 +43,7 @@
 | TR-11 | 中 | NFR-1.1、§7.1 | NEFilterDataProvider 是内联通道：每个新 flow 需返回 verdict，扩展延迟/崩溃直接影响目标 App 建连（待实测验证失败模式与回退行为） | verdict 路径零分配/常数时间；扩展崩溃时的系统回退行为实测；将"扩展导致的建连延迟"纳入 NFR-1 指标 |
 | TR-12 | 低 | FR-3.1、§6 | DELETE/RENAME 语义平台差异：Windows delete 多为 delete-on-close/SetInfo disposition，macOS 有 unlink/rename/exchangedata/clone 多种表达（待实测验证映射完备性） | 建平台操作映射表为需求附件；聚合层以归一化 operation 为准，原始操作保留备查 |
 | TR-13 | 低 | FR-1.2、§7.2 | Windows 未签名应用常见、macOS ad-hoc 签名存在；签名身份缺失时 App Identity 跨启动稳定性无保障 | App Identity 定义分层 fallback：签名 > Bundle/路径 > 文件哈希 + 路径；Processes 页展示所用信号（与 FR-1.5 一致） |
-| TR-14 | 低 | §7.2、FR-1.4 | WFP ALE net event 归属字段为 appId（设备路径）/userId，是否含 PID 待实测验证；若不含，进程级归属需额外关联 | 归属以 appId（App 级）为准更符合产品模型；PID 级展示由 ES/ETW 进程事件补齐 |
+| TR-14 | 低 | §7.2、FR-1.4 | WFP ALE net event 归属字段为 appId（设备路径）/userId；**已实测确认无 processId**（netsh 导出 300 条 + SDK `fwpmtypes.h` `FWPM_NET_EVENT_HEADER0~3` 双向核对，2026-09-27） | 已关闭：归属以 Kernel-Network 的 PID 字段 + appId（App 级）组合为准；另实测发现用户态订阅拿不到 ALE_AUTH_* 成功建连事件，连接流主源为 Kernel-Network |
 
 ---
 

@@ -104,7 +104,7 @@ macOS 精准文件事件归因依赖 Endpoint Security entitlement，需向 Appl
 | 编号 | 需求 | 优先级 |
 |------|------|--------|
 | FR-3.1 | 采集归属进程的文件事件：READ / WRITE / CREATE / DELETE / RENAME | P0 |
-| FR-3.2 | 每条 FileEvent 记录：timestamp、process、operation、path、bytes（可选）、result | P0 |
+| FR-3.2 | 每条 FileEvent 记录：timestamp、process、operation、path、bytes（可选）、result；bytes 平台可得性不对称——Windows FileIo Read/Write 含 IoSize（已实测），macOS ES 文件事件无字节数（待 entitlement 获批后实测） | P0 |
 | FR-3.3 | 不采集文件内容；报告中不出现文件正文 | P0 |
 | FR-3.4 | 按路径、目录、进程三个维度聚合文件事件 | P0 |
 | FR-3.5 | 对命中可配置敏感路径列表的访问做中性标记（Sensitive Location Access），不作恶意判定 | P0 |
@@ -113,10 +113,10 @@ macOS 精准文件事件归因依赖 Endpoint Security entitlement，需向 Appl
 
 | 编号 | 需求 | 优先级 |
 |------|------|--------|
-| FR-4.1 | 采集归属进程的网络连接元数据：domain / IP、port、protocol、连接次数、首次/最后连接时间、上行/下行流量 | P0 |
-| FR-4.2 | 每条 NetFlow 记录：timestamp、process、protocol、local/remote endpoint、hostname（可获得时）、bytes up/down | P0 |
+| FR-4.1 | 采集归属进程的网络连接元数据：domain / IP、port、protocol、连接次数、首次/最后连接时间为 P0 必达；上行/下行流量为平台依赖——Windows 经 ETW Kernel-Network 已实测可用，macOS 需 NEFilterPacketProvider 逐包计数，列为 G1 验证项，成本不可接受则降级为连接数/时长并在 Summary 注明 | P0 |
+| FR-4.2 | 每条 NetFlow 记录：timestamp、process、protocol、local/remote endpoint、hostname（可获得时，主要来源为 DNS 关联即 FR-4.4，直连 IP 场景无 hostname）、bytes up/down（平台依赖同 FR-4.1） | P0 |
 | FR-4.3 | 不抓 payload、不 MITM、不解密 HTTPS；域名无法解析时诚实展示 IP 与可得字段，不伪造 URL | P0 |
-| FR-4.4 | DNS 解析与 flow 关联增强（提升 hostname 覆盖率） | P1 |
+| FR-4.4 | DNS 解析与 flow 关联（提升 hostname 覆盖率；不抓 payload）。不实现则 Network 页域名列大面积为空、Summary"主要连到哪里"卖点（UC-1/UC-3、AC-3）无法兑现。Windows 经 `Microsoft-Windows-DNS-Client` Operational 通道 + DNS 缓存实现（通道默认关闭，启用需管理员，已实测）；macOS 观察系统 DNS 解析路径 | P0 |
 
 ### FR-5 报告与信息架构
 
@@ -139,7 +139,7 @@ macOS 精准文件事件归因依赖 Endpoint Security entitlement，需向 Appl
 |------|------|--------|
 | FR-6.1 | macOS：通过 Endpoint Security System Extension 采集进程与文件事件；引导用户激活 System Extension 并授予 Full Disk Access | P0 |
 | FR-6.2 | macOS：通过 Network Extension Content Filter System Extension 采集网络流元数据 | P0 |
-| FR-6.3 | Windows：通过 ETW FileIo 采集文件事件，通过 WFP ALE 层采集网络元数据；P0 只观察不阻断 | P0 |
+| FR-6.3 | Windows：通过 ETW `Microsoft-Windows-Kernel-File` 采集文件事件（含 FileObject→path 映射管线），通过 ETW `Microsoft-Windows-Kernel-Network` 采集连接元数据与流量（无内核驱动），WFP `appId` 作 App 级归属辅助，DNS-Client Operational 通道做 hostname 关联；P0 只观察不阻断。全部采集面已在 Windows 11 26200 实测可用（`docs/analysis/08-windows-采集路径实测.md`） | P0 |
 | FR-6.4 | 系统级采集由特权服务/系统扩展完成，GUI 通过 IPC 获取筛选后的 Session 数据 | P0 |
 | FR-6.5 | 权限未授予或 System Extension 未激活时，Home 页应明确展示权限状态与引导，不允许静默降级采集 | P0 |
 | FR-6.6 | 提供干净的卸载流程：移除系统扩展 / 服务与本地数据由用户可选 | P0（G4 完成） |
@@ -153,7 +153,7 @@ macOS 精准文件事件归因依赖 Endpoint Security entitlement，需向 Appl
 | 编号 | 需求 | 优先级 |
 |------|------|--------|
 | NFR-1.1 | 监控不应明显拖慢被监控 App；高事件量场景下 UI 不卡死 | P0 |
-| NFR-1.2 | 事件在内核层尽早过滤、用户层批处理，使用 ring buffer；只持久化目标 App 的事件 | P0 |
+| NFR-1.2 | 按平台能力尽早过滤（macOS ES 进程级 mute 待获批后实测；Windows ETW FileIo 为全系统流、无 PID 内核过滤，用户态过滤成本计入性能预算）、用户层批处理，使用 ring buffer；只持久化目标 App 的事件；非归属事件不持久化、不进日志、不进崩溃转储 | P0 |
 | NFR-1.3 | 10–30 分钟 Session 持续录制数据稳定、无丢失性故障（G2 验收） | P0 |
 
 ### NFR-2 隐私与安全
@@ -178,6 +178,13 @@ macOS 精准文件事件归因依赖 Endpoint Security entitlement，需向 Appl
 |------|------|--------|
 | NFR-4.1 | Summary 必须让非安全专业用户不读 raw event 即可回答"它碰了哪些重要位置、主要连到哪里"（G3 验收） | P0 |
 | NFR-4.2 | 报告优先于原始日志：默认 Summary，高级用户再展开 Timeline 与 raw event | P0 |
+
+### NFR-5 兼容性
+
+| 编号 | 需求 | 优先级 |
+|------|------|--------|
+| NFR-5.1 | Windows：建议最低支持 Windows 10 1809+（Kernel-File/Kernel-Network manifest 架构自 RS4 稳定，待多版本验证）；已实测基线 Windows 11 build 26200 + SDK 10.0.26100 | P0 |
+| NFR-5.2 | macOS：最低支持版本以系统扩展与 ES API 行为为准（建议 ≥13，待 entitlement 获批后实测） | P0 |
 
 ---
 
@@ -210,10 +217,13 @@ macOS 精准文件事件归因依赖 Endpoint Security entitlement，需向 Appl
 
 | 能力 | 技术 | 说明 |
 |------|------|------|
-| 文件 I/O | ETW FileIo events | Create / Read / Write / Delete / Rename，结合 process/thread 信息做归属 |
-| 网络 | WFP / ALE 层 | 按 application / user / connection 过滤；P0 只观察元数据 |
-| 权限服务 | Privileged Windows service | 系统级采集，GUI 经 IPC 取数 |
-| UI / Core | Tauri + Rust | 与 macOS 共用数据模型与报告逻辑 |
+| 文件 I/O | ETW `Microsoft-Windows-Kernel-File` | Create/Name/Rename 族事件直接携带内核路径（`\Device\HarddiskVolumeN\`，需规范化层转盘符）；Read/Write 族仅携带 FileObject 指针 + `IOSize`，**路径需 FileObject→path 映射管线**（核心工程量，丢事件下可能错配）。事件经 `Execution.ProcessID` 携带 PID 归属；为全系统事件流、无 PID 内核过滤，用户态过滤成本计入性能预算（已实测，见 `docs/analysis/08-windows-采集路径实测.md`） |
+| 网络连接元数据 | ETW `Microsoft-Windows-Kernel-Network` | **主采集源**：每事件携带 PID + 端点四元组 + size + connid + 连接生命周期（Connect/Accept/Disconnect/Reconnect），覆盖 FR-4.1/4.2 的端点与 bytes，无需内核驱动（已实测） |
+| 网络归属辅助 | WFP net events（`appId`/`userId`） | `appId` 为可执行文件设备路径，作 App 级身份校验。限制：net events 无 PID/bytes；用户态 `FwpmNetEventSubscribe*` 只能订阅 DROP/CAPABILITY 类事件，**成功建连（ALE_AUTH_*）仅内核 callout 可得，P0 不走该路径**（已实测） |
+| hostname 关联 | `Microsoft-Windows-DNS-Client` Operational 通道 | 默认关闭，启用需管理员；配合 DNS 缓存查询提升 hostname 覆盖率（FR-4.4） |
+| 权限服务 | Privileged Windows service | **硬依赖**：非管理员启动 ETW 会话被系统拒绝（已实测）；系统级采集在特权服务内完成，GUI 经 IPC 取筛选后数据 |
+| 基线快照 | `GetExtendedTcpTable` / `Get-DnsClientCache` / `Get-AuthenticodeSignature` | Session Start 时枚举既有连接（带 PID）、DNS 缓存、签名身份，均免管理员可用（已实测） |
+| UI / Core | Tauri + Rust | 与 macOS 共用数据模型与报告逻辑；`ferrisetw`/`windows` crate 提供 ETW/WFP 绑定 |
 
 ---
 
@@ -249,7 +259,7 @@ macOS 精准文件事件归因依赖 Endpoint Security entitlement，需向 Appl
 | 阶段 | 工作 | Gate |
 |------|------|------|
 | G0 权限申请 | 提交 Apple Endpoint Security entitlement（注明 Developer ID 分发意图）；验证 NE Developer ID 配置：`-systemextension` 后缀 entitlement 值 + 手动签名 + provisioning profile | ES 申请已提交；NE 无需审批、自助开启，仅需打通 Developer ID 签名链 |
-| G1 PoC | macOS/Windows 各抓取一个目标 App 的文件事件和网络连接，能关联 process tree | 单 Session 数据可信 |
+| G1 PoC | 拆为三项：①macOS 抓取目标 App 文件+网络事件并关联 process tree（依赖 ES entitlement 获批；审批期间可在 SIP-off 测试机联调——SIP 开启下未获批 exec 即终止）；②macOS PacketProvider 包级流量通道吞吐成本验证（决定 bytes 是否保留）；③Windows 抓取目标 App 文件+网络事件（采集面已实测可行，剩 FileObject→path 映射准确率与用户态过滤性能成本两个验证项） | 单 Session 数据可信 |
 | G2 Core | 统一事件模型、SQLite、聚合、Timeline、Export | 10–30 分钟 Session 稳定 |
 | G3 UX | App Picker、Summary、敏感路径、域名聚合、权限 onboarding | 非安全专业用户可看懂 |
 | G4 Beta | 签名、公证、安装/卸载、崩溃恢复、性能 | 真实用户环境可持续使用 |
@@ -260,17 +270,19 @@ macOS 精准文件事件归因依赖 Endpoint Security entitlement，需向 Appl
 
 | 风险 | 影响 | 控制措施 |
 |------|------|----------|
-| Apple entitlement 未获批/审批慢 | macOS 核心功能无法正式分发 | G0 第一天提交申请；审批期间用 SIP-off 测试机联调 PoC（2026-09-25 实测：SIP 开启下 ES 客户端 exec 即被终止，无其他降级路径）；延迟则 Windows beta 先行 |
-| Helper/XPC 归属错误 | 漏掉或错算行为 | 签名/Bundle/父子进程多信号归属（FR-1.5）；Processes 页展示归属依据供核对 |
-| 网络域名无法完整解析 | 只能看到 IP 或 hostname 不完整 | 诚实展示可得字段（FR-4.3）；DNS/flow 关联增强列为 P1（FR-4.4） |
-| 事件量大影响性能 | 目标 App 或系统变慢 | 内核层尽早过滤、用户层批处理、ring buffer（NFR-1.2） |
+| Apple entitlement 未获批/审批慢 | macOS 核心功能无法正式分发（SIP 开启下未获批时 ES 客户端 exec 即被终止，已实测） | G0 第一天提交申请；审批期间用 SIP-off 测试机联调 PoC；延迟则 Windows beta 先行 |
+| Helper/XPC 归属错误 | 漏掉或错算行为 | 签名/Bundle/父子进程多信号归属（FR-1.5）；Windows 侧以 Kernel-Network PID 字段 + WFP appId 多信号归属（已实测）；Processes 页展示归属依据供核对 |
+| 网络域名无法完整解析 | 只能看到 IP 或 hostname 不完整 | 诚实展示可得字段（FR-4.3）；DNS/flow 关联已升 P0（FR-4.4，Windows 实现路径已实测） |
+| Windows FileObject→path 映射错配 | 文件路径错误或缺失 | G1 专项验证映射准确率；缺失时降级展示 file object id + 卷路径；Plan B 为 minifilter 驱动（分发成本上升） |
+| 事件量大影响性能 | 目标 App 或系统变慢 | 按平台能力尽早过滤、用户层批处理、ring buffer（NFR-1.2）；Windows 实测 2 秒约 4.6 万条全系统事件，用户态过滤成本列入 G1 验证 |
 | 用户把时序当因果 | 误判隐私行为 | 统一 UI 文案标注（FR-5.9） |
 | 免费项目维护成本 | 拖累收费产品开发 | 严格 P0 边界；不做 blocking / IDS / malware DB / HTTPS decrypt |
 
 ### 外部依赖
 
-- Apple Endpoint Security entitlement 审批（macOS 硬门槛）
+- Apple Endpoint Security entitlement 审批（macOS 唯一审批项，硬门槛；NE 为自助开启，无需审批）
 - Apple Developer ID 签名与公证服务
+- Windows 代码签名证书（OV/EV）与 SmartScreen 信誉积累（Windows beta 先行时为分发硬门槛）
 - 开源传播渠道：GitHub / HN / Reddit（品牌目标，非功能依赖）
 
 ---
@@ -283,4 +295,7 @@ macOS 精准文件事件归因依赖 Endpoint Security entitlement，需向 Appl
 - Apple — TN3134 Network Extension provider deployment：<https://developer.apple.com/documentation/technotes/tn3134-network-extension-provider-deployment>
 - Apple — System Extensions（entitlement 申请入口与 SIP-off 测试说明）：<https://developer.apple.com/system-extensions/>
 - Microsoft — ETW FileIo：<https://learn.microsoft.com/windows/win32/etw/fileio>
+- Microsoft — ETW Kernel-Network：<https://learn.microsoft.com/windows/win32/etw/ms-windowskernelnetwork>
 - Microsoft — Windows Filtering Platform：<https://learn.microsoft.com/windows/win32/fwp/about-windows-filtering-platform>
+
+Windows 侧采集能力实测记录见 `docs/analysis/08-windows-采集路径实测.md`（2026-09-27，Windows 11 26200）。
