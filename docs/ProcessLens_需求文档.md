@@ -6,9 +6,9 @@
 | 项目 | 内容 |
 |------|------|
 | 文档类型 | 产品需求文档（PRD / SRS） |
-| 文档状态 | Draft v1.0 |
+| 文档状态 | Draft v1.1（修正 NE entitlement 审批口径与 SIP-off 联调路径，见 §7.1/§10） |
 | 平台 | macOS / Windows |
-| 日期 | 2026-09-24 |
+| 日期 | 2026-09-27 |
 | 上游文档 | `docs/ProcessLens_单App行为监控器_项目企划书.txt` |
 
 本文档将项目企划转化为可执行、可验证的需求条目。所有需求按模块编号，标注优先级（P0 = MVP 必须交付；P1 = 后续版本）。需求措辞遵循"只陈述观察事实"的产品原则。
@@ -36,7 +36,7 @@
 
 ### 1.4 Go/No-Go 前提
 
-macOS 精准文件事件归因依赖 Endpoint Security entitlement，需向 Apple 申请。**entitlement 获批是 macOS 正式版的 Go/No-Go 条件**，须在开发初期（G0）即提交申请，不作为发布前补办的细节。
+macOS 精准文件事件归因依赖 Endpoint Security entitlement，需向 Apple 申请。**entitlement 获批是 macOS 正式版的 Go/No-Go 条件**，须在开发初期（G0）即提交申请，不作为发布前补办的细节。它是 macOS 侧唯一需要 Apple 审批的能力：Network Extension 相关 capability 为自助开启（见 §7.1）。未获批期间 SIP 开启环境下 ES 客户端 exec 即被终止、无法运行（`docs/analysis/07` 实测）；官方认可的联调路径为审批期间临时禁用 SIP。
 
 ---
 
@@ -97,6 +97,7 @@ macOS 精准文件事件归因依赖 Endpoint Security entitlement，需向 Appl
 | FR-2.3 | 目标 App 的进程退出 / 重启不应中断 Session；新启动的归属进程应继续被追踪 | P0 |
 | FR-2.4 | 采集端崩溃或异常退出后，已采集的 Session 数据应可恢复，报告可基于已有数据生成 | P0（G4 完成） |
 | FR-2.5 | 支持两个 Session 的对比差异报告 | P1 |
+| FR-2.6 | **Session 启动基线快照**：Start 时枚举既有进程的连接与打开文件作为基线（macOS 用 `proc_pidfdinfo`，Windows 用 `GetExtendedTcpTable`），补偿中途 attach 看不到既有连接的问题；免 entitlement 即可实现（GAP-02） | P0 |
 
 ### FR-3 文件事件采集
 
@@ -200,8 +201,8 @@ macOS 精准文件事件归因依赖 Endpoint Security entitlement，需向 Appl
 
 | 能力 | 技术 | 约束 |
 |------|------|------|
-| 进程 + 文件事件 | Endpoint Security System Extension | entitlement 需向 Apple 申请；用户需激活 System Extension 并授予 Full Disk Access |
-| 网络流 | Network Extension Content Filter System Extension | Developer ID 直接分发需对应 entitlement/value 与系统扩展配置 |
+| 进程 + 文件事件 | Endpoint Security System Extension | entitlement 需向 Apple 申请（macOS 侧唯一审批项）；审批期间可在 SIP 关闭的测试环境联调；用户需激活 System Extension 并授予 Full Disk Access（用户授权，非 entitlement） |
+| 网络流 | Network Extension Content Filter System Extension | entitlement 为自助开启，无需 Apple 审批；Developer ID 分发必须用 `-systemextension` 后缀值（`content-filter-provider-systemextension`）+ 手动签名/provisioning profile；宿主 App 需 `system-extension.install`（自助） |
 | UI / 数据层 | Tauri + Rust + SQLite | 系统扩展用原生 Swift/Obj-C/C 封装，经 IPC 与主 App 通信 |
 | 签名分发 | Developer ID + notarization | — |
 
@@ -247,7 +248,7 @@ macOS 精准文件事件归因依赖 Endpoint Security entitlement，需向 Appl
 
 | 阶段 | 工作 | Gate |
 |------|------|------|
-| G0 权限申请 | 提交 Apple Endpoint Security entitlement；确认 Network Extension Developer ID 配置 | 申请已提交；明确审批路径 |
+| G0 权限申请 | 提交 Apple Endpoint Security entitlement（注明 Developer ID 分发意图）；验证 NE Developer ID 配置：`-systemextension` 后缀 entitlement 值 + 手动签名 + provisioning profile | ES 申请已提交；NE 无需审批、自助开启，仅需打通 Developer ID 签名链 |
 | G1 PoC | macOS/Windows 各抓取一个目标 App 的文件事件和网络连接，能关联 process tree | 单 Session 数据可信 |
 | G2 Core | 统一事件模型、SQLite、聚合、Timeline、Export | 10–30 分钟 Session 稳定 |
 | G3 UX | App Picker、Summary、敏感路径、域名聚合、权限 onboarding | 非安全专业用户可看懂 |
@@ -259,7 +260,7 @@ macOS 精准文件事件归因依赖 Endpoint Security entitlement，需向 Appl
 
 | 风险 | 影响 | 控制措施 |
 |------|------|----------|
-| Apple entitlement 未获批/审批慢 | macOS 核心功能无法正式分发 | G0 第一天提交申请；先做 PoC；延迟则 Windows beta 先行 |
+| Apple entitlement 未获批/审批慢 | macOS 核心功能无法正式分发 | G0 第一天提交申请；审批期间用 SIP-off 测试机联调 PoC（2026-09-25 实测：SIP 开启下 ES 客户端 exec 即被终止，无其他降级路径）；延迟则 Windows beta 先行 |
 | Helper/XPC 归属错误 | 漏掉或错算行为 | 签名/Bundle/父子进程多信号归属（FR-1.5）；Processes 页展示归属依据供核对 |
 | 网络域名无法完整解析 | 只能看到 IP 或 hostname 不完整 | 诚实展示可得字段（FR-4.3）；DNS/flow 关联增强列为 P1（FR-4.4） |
 | 事件量大影响性能 | 目标 App 或系统变慢 | 内核层尽早过滤、用户层批处理、ring buffer（NFR-1.2） |
@@ -279,5 +280,7 @@ macOS 精准文件事件归因依赖 Endpoint Security entitlement，需向 Appl
 - Apple — Monitoring System Events with Endpoint Security：<https://developer.apple.com/documentation/endpointsecurity/monitoring-system-events-with-endpoint-security>
 - Apple — System Extensions：<https://developer.apple.com/documentation/systemextensions>
 - Apple — Network Extension Entitlement：<https://developer.apple.com/documentation/bundleresources/entitlements/com.apple.developer.networking.networkextension>
+- Apple — TN3134 Network Extension provider deployment：<https://developer.apple.com/documentation/technotes/tn3134-network-extension-provider-deployment>
+- Apple — System Extensions（entitlement 申请入口与 SIP-off 测试说明）：<https://developer.apple.com/system-extensions/>
 - Microsoft — ETW FileIo：<https://learn.microsoft.com/windows/win32/etw/fileio>
 - Microsoft — Windows Filtering Platform：<https://learn.microsoft.com/windows/win32/fwp/about-windows-filtering-platform>

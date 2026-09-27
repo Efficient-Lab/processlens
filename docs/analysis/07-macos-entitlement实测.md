@@ -13,7 +13,7 @@
 
 | # | 验证项 | 方法 | 结果 | 结论 |
 |---|--------|------|------|------|
-| 1 | ES 客户端能否在无 Apple 批准 entitlement 的情况下本地运行 | hello world + `com.apple.developer.endpoint-security.client` entitlement，开发证书签名 | **exec 即被 SIGKILL**（exit 137，零输出）；同一二进制去掉 entitlement 后正常输出 | entitlement 约束在 exec 时强制，需 Apple 签发的 provisioning profile；加 `get-task-allow` 无效 |
+| 1 | ES 客户端能否在无 Apple 批准 entitlement 的情况下本地运行 | hello world + `com.apple.developer.endpoint-security.client` entitlement，开发证书签名 | **exec 即被 SIGKILL**（exit 137，零输出）；同一二进制去掉 entitlement 后正常输出 | entitlement 约束在 exec 时强制，需 Apple 签发的 provisioning profile；加 `get-task-allow` 无效（**适用范围：SIP 开启环境**；SIP 关闭后可运行，见文末追加调查） |
 | 2 | ES 事件语义（READ/WRITE/path/bytes） | — | **无法实测**：ES 客户端根本无法启动（见 #1） | TR-01/02 维持"待 entitlement 获批后实测"；Apple 官方文档口径不变 |
 | 3 | 免 entitlement 的进程网络元数据 | `proc_pidfdinfo` 枚举目标进程 socket fd | **可用**：拿到 `10.0.0.16:49683 → 151.101.1.69:443`、TCP state、IPv4/6 | macOS 免审批可枚举每进程连接端点（快照式） |
 | 4 | 免 entitlement 的每进程流量字节数 | `nettop -p <pid>`（nstat 数据源） | **可用**：bytes_in=21 / bytes_out=37，按连接分列 | macOS 免审批可拿到每进程/每连接流量统计 |
@@ -28,9 +28,9 @@
 
 `endpoint-security.client` 二进制在 entitlement 获批前**连进程都启动不了**——不是 `es_new_client` 返回错误，而是内核在 exec 阶段 SIGKILL。这意味着：
 
-- macOS 侧 G1 PoC **必须等 entitlement 获批**，或在批准前用完全不同的技术路径（无）。无开发签名降级路径。
-- G0 的排期预估不能假设"申请期间先做着"，macOS 采集层代码只能在获批后编写联调（或先在虚拟机/另一台获批机器上）。
-- "Windows beta 先行"从兜底方案变成**macOS 获批前的唯一可执行路径**，PM-R03 的优先级上调。
+- macOS 侧 G1 PoC 在 SIP 开启的机器上**必须等 entitlement 获批**，无开发签名降级路径；审批期间可改用关闭 SIP 的测试机联调（见文末 2026-09-27 追加调查）。
+- G0 的排期预估不能假设"申请期间在 SIP 开启环境先做着"，但 SIP-off 测试机是官方认可的联调路径，macOS 采集层代码不必等到获批才动笔。
+- "Windows beta 先行"仍是审批延误时的产品兜底；开发层面有 SIP-off 路径兜底，PM-R04 的"获批前可行性路径"已有答案。
 
 ### 2. 免 entitlement 的 macOS 降级路径只能做"快照"，验证企划书 §19 的否决正确
 
@@ -77,3 +77,40 @@ proc_pidfdinfo(pid, fd, PROC_PIDFDSOCKETINFO, ...)
 # 免 entitlement 的每进程流量（可用）
 nettop -p <pid> -l 1 -x -J bytes_in,bytes_out
 ```
+
+---
+
+## 追加调查：NE entitlement 与 SIP-off 联调路径（2026-09-27）
+
+基于 Apple 官方文档联网核实，补充/更正三条结论。
+
+### A. NE content-filter entitlement 无需 Apple 审批（解决 TR-03 / PM-R02）
+
+`com.apple.developer.networking.networkextension` 自 2016 年起为自助 capability：付费开发者账号在 Certificates, Identifiers & Profiles 给 App ID 启用 "Network Extensions" 即可，不走 managed entitlement 申请表。此前分析文档（`02-desktop-app-engineer.md` TR-03、`06-senior-project-manager.md` PM-R02、`00-综合分析报告.md`）假设的"NE 同为受限审批、Go/No-Go 双门槛"**不成立**——需要 Apple 审批的只有 ES entitlement 一项。
+
+Developer ID 分发侧的注意点：
+
+- entitlement 值必须用 `-systemextension` 后缀变体：`content-filter-provider-systemextension`；Xcode Signing & Capabilities UI 只写入不带后缀的值，需手动改 `.entitlements`
+- Xcode 自动签名与 Organizer 的 Developer ID 导出对该后缀支持不可靠，需手动下载 Developer ID provisioning profile 并手动签名（可写脚本固化）
+- `com.apple.developer.system-extension.install`（宿主 App 安装系统扩展）为自助 entitlement，无需审批
+- ES entitlement 仅能用于 Developer ID 分发，Mac App Store 不支持；ES 审批常先只批 development，Developer ID 分发授权可能需单独跟进，申请时应注明分发意图
+- Full Disk Access 与 System Extension 激活是 TCC 用户授权，不是 entitlement 申请项
+
+### B. SIP 关闭后 ES client 可运行：获批前存在官方认可的联调路径
+
+Apple System Extensions 页面明示：entitlement 审批期间可临时禁用 SIP 进行测试。`csrutil disable` 后 entitlement 强制检查不再执行，无 entitlement 的 ES client 可正常启动。即：
+
+- 实测 #1/#2 的结论只在 SIP 开启环境成立；SIP-off 测试机上 TR-01/02 事件语义验证可提前进行
+- G1 macOS PoC 不必干等审批，备一台 SIP-off 测试机/测试分区即可先行联调；正式分发仍须获批，Go/No-Go 结论不变
+- Apple Silicon 关闭 SIP 需在 recoveryOS 选"降低安全性"；建议专用测试环境，不在日常开发机上操作
+
+### C. 回写状态
+
+上述结论已回写需求文档 v1.1（§1.4、FR-2.6、§7.1、§10 G0、§11 风险表、§12 参考链接）。前文"回写建议"表中 §10 G0 行的两个待确认项（NE 是否需审批、获批前是否有联调路径）由此节定论。
+
+### 来源（抓取日期 2026-09-27）
+
+- [System Extensions — Apple](https://developer.apple.com/system-extensions/)：entitlement 申请入口 + SIP-off 测试说明
+- [Network Extensions Entitlement — Apple](https://developer.apple.com/documentation/bundleresources/entitlements/com.apple.developer.networking.networkextension)：`-systemextension` 后缀值
+- [TN3134: Network Extension provider deployment](https://developer.apple.com/documentation/technotes/tn3134-network-extension-provider-deployment)：content filter 部署形态
+- [Endpoint Security Entitlement — Apple](https://developer.apple.com/documentation/bundleresources/entitlements/com.apple.developer.endpoint-security.client)：Developer ID 分发限定

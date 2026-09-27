@@ -18,6 +18,8 @@
 3. **Windows ETW FileIo 不含路径**。FileIo 事件携带 FileObject 指针，路径需由 `FileIo_Name`/`FileCreate` 类事件构建 FileObject→path 映射（待实测验证映射完整性与丢事件下的错配率）。这是 §7.2 完全没有提及的核心工程量；且 FileIo 为全系统事件流、无法按 PID 在内核侧过滤（待实测验证），NFR-1.2"内核层尽早过滤"在 Windows 上不成立。
 4. **macOS 双 entitlement 门槛被低估**。`com.apple.developer.networking.networkextension`（content-filter-provider 值）与 ES entitlement 同属受限授权、均需向 Apple 申请（待实测验证当前审批流程）；文档把 NE 写成"确认配置"，把 Go/No-Go 单挂在 ES 上。G0 应同时提交两项申请。另外，获批前的开发联调可能需要 provisioning profile 或降级 SIP 测试环境（待实测验证），影响 G1 排期。
 
+> 〔勘误〕2026-09-27 核实 Apple 官方文档：NE capability 自 2016 年起自助开启、无需审批；"双门槛/G0 双申请"不成立，Go/No-Go 单挂 ES 的口径正确。需申请的仅 `endpoint-security.client`；NE 的 Developer ID 注意点为 `-systemextension` 后缀值 + 手动签名。SIP 降级联调路径猜测成立：SIP-off 环境无 entitlement 也可运行 ES client（Apple 明示审批期间可临时禁用 SIP 测试）。详见 `07-macos-entitlement实测.md` 追加调查。
+
 **其余判断**：归属模型（FR-1.3/1.5）方向正确——macOS 上 XPC/Helper 的 ppid 是 launchd，父子链必然断裂，签名/Bundle 多信号归属是必选项而非增强项；Windows P0 用 user-mode `FwpmNetEvents` + ETW 即可覆盖连接元数据，**无需内核驱动**，签名门槛低，Windows 先行 beta 的策略可行。"无丢失性故障"（NFR-1.3）与"不明显拖慢"（NFR-1.1）按现措辞**无法验收**，必须量化（见 NFR 修改建议）。跨平台统一数据模型可行，但 `bytes`、`hostname`、`READ` 语义三项存在平台不对称，需要在模型层显式处理。
 
 结论：**Conditional Go 不变，但建议把 §7 按本文修正重写，并把"macOS 流量字节数"与"Windows 路径解析"列为 G1 的两个独立验证项——它们是当前 MVP 范围里唯二可能推翻 P0 承诺的点。**
@@ -30,7 +32,7 @@
 |------|--------|----------|------|----------------|
 | TR-01 | 高 | FR-3.1、§7.1 | ES 无 READ 事件；"读"只能由 OPEN(FREAD)/CLOSE(modified) 近似，语义为"打开"而非"实际读取"；缓存读、长持 fd 重读不可见（均待实测验证） | 数据模型 operation 按平台事件语义重定义；Summary/Files 文案区分"打开读取"与"写入"；G1 实测事件语义矩阵（含 macOS 版本下限） |
 | TR-02 | 高 | FR-4.1/4.2、§7.1、FR-5.2 | NE flow 元数据无 bytes；流量统计需 NEFilterPacketProvider 逐包经过扩展（不读 payload，但全量流量过通道），吞吐/延迟成本未知（待实测验证） | G1 设专项：包级通道吞吐基准 + 目标 App 网速回归测试；若成本不可接受，macOS 降级为连接数/时长/端点，bytes 标"可得时"（Windows 侧有替代源，见 TR-06） |
-| TR-03 | 高 | §1.4、§7.1、§10 G0 | NE content-filter entitlement 同为受限授权需 Apple 审批（待实测验证流程）；获批前开发联调可能依赖 profile 或 SIP 降级环境（待实测验证） | G0 同时提交 ES + NE 两项申请；Go/No-Go 改为双门槛；G1 排期预留审批等待期的降级验证路径 |
+| TR-03 | 高 | §1.4、§7.1、§10 G0 | NE content-filter entitlement 同为受限授权需 Apple 审批（待实测验证流程）〔勘误：NE 无需审批、自助开启，2026-09-27 核实〕；获批前开发联调可能依赖 profile 或 SIP 降级环境〔已核实：SIP-off 可运行〕 | G0 同时提交 ES + NE 两项申请〔勘误：仅 ES 需申请〕；Go/No-Go 改为双门槛〔勘误：仍为 ES 单门槛〕；G1 排期预留审批等待期的降级验证路径 |
 | TR-04 | 高 | §7.2、FR-6.3、FR-3.x | ETW FileIo 不含路径；FileObject→path 映射需消费 Name/FileCreate 流并在丢事件、对象复用、rename 链下保持正确（待实测验证准确率） | G1 专项验证映射管线；定义映射缺失时的降级展示（file object id + 卷路径）；备选 minifilter 驱动（路径准确但需驱动签名，分发门槛上升，列为 Plan B） |
 | TR-05 | 高 | NFR-1.2、§7.2 | FileIo 为全系统事件流，无法按 PID 内核过滤（待实测验证 provider 过滤能力）；高负载下用户态过滤成本与 ETW 会话缓冲溢出丢事件是真实风险 | NFR-1.2 改为"按平台能力尽早过滤"；ETW 会话缓冲、批大小、丢弃计数纳入性能预算；Session 元数据落 `lost_events` 计数并在报告可见 |
 | TR-06 | 中 | FR-4.1/4.2、§7.2 | WFP ALE net events 提供端点/appId/userId，无 bytes（待实测验证是否含 PID） | Windows 流量字节用 ETW Kernel-Network（含 PID + size，无驱动，待实测验证字段）或 TCPIP ESTATS 轮询补足；无需为 bytes 上 callout 驱动 |
@@ -75,8 +77,8 @@
 | FR-4.2 | "……hostname（可获得时）、bytes up/down" | hostname 补注"主要来源为 DNS/flow 关联（见 FR-4.4），直连 IP 场景无 hostname"；bytes 同 FR-4.1 平台差异标注 |
 | FR-4.4 | "DNS 解析与 flow 关联增强（提升 hostname 覆盖率）｜P1" | 升 P0。理由：macOS NE remoteEndpoint 多为 IP（待实测验证）、Windows 本就无 hostname；不做关联则 Network 页"域名"列与 Summary"主要连到哪里"的核心卖点（UC-1/UC-3、AC-3）无法兑现 |
 | §7.1 ES 行 | "用户需激活 System Extension 并授予 Full Disk Access" | 补两点：①ES 客户端打包形态（系统扩展 vs 特权 daemon）待 G1 定案；②FDA 与事件投递范围的关系待实测验证——若受保护目录事件依赖 FDA，则 FDA 是采集正确性硬依赖而非可选权限 |
-| §7.1 NE 行 | "Developer ID 直接分发需对应 entitlement/value 与系统扩展配置" | 明确为受限授权：`com.apple.developer.networking.networkextension`（content-filter-provider）需向 Apple 申请审批（待实测验证流程），与 ES 并列进入 §1.4 Go/No-Go；G0 双申请 |
-| §7.1 ES 行（隐含） | — | 增补：获批前开发联调可能需 provisioning profile 或 SIP 降级环境（待实测验证），G1 排期预留审批等待期 |
+| §7.1 NE 行 | "Developer ID 直接分发需对应 entitlement/value 与系统扩展配置" | 明确为受限授权：`com.apple.developer.networking.networkextension`（content-filter-provider）需向 Apple 申请审批（待实测验证流程），与 ES 并列进入 §1.4 Go/No-Go；G0 双申请。〔勘误〕前提不成立：NE 自助开启无需审批（2026-09-27 核实）；正确要求是 Developer ID 用 `-systemextension` 后缀值 + 手动签名，PRD v1.1 §7.1 已按此回写 |
+| §7.1 ES 行（隐含） | — | 增补：获批前开发联调可能需 provisioning profile 或 SIP 降级环境（待实测验证），G1 排期预留审批等待期。〔已核实〕SIP-off 环境 ES client 可运行（Apple 明示）；SIP 开启下 dev-signed exec 即被终止（2026-09-25 实测） |
 | §7.2 文件 I/O 行 | "Create / Read / Write / Delete / Rename，结合 process/thread 信息做归属" | 补关键事实：FileIo 事件不含路径，需 FileObject→path 映射管线（工程量主体，丢事件下可能错配）；FileIo 无法按 PID 内核过滤，全系统流量需用户态过滤并计入性能预算（均待实测验证） |
 | §7.2 网络行 | "WFP / ALE 层 按 application / user / connection 过滤；P0 只观察元数据" | 明确 P0 实现为 user-mode `FwpmNetEvents` 订阅（无内核驱动、签名门槛低）；归属字段为 appId/userId，是否含 PID 待实测验证；bytes 由 ETW Kernel-Network 补足而非 WFP |
 | NFR-1.1 | "监控不应明显拖慢被监控 App；高事件量场景下 UI 不卡死" | 量化为可验收指标草案：①目标 App 基准操作（冷启动/典型任务）开启监控后耗时增量 ≤10%；②采集进程常驻 CPU ≤5% 单核、RSS ≤200MB（草案值，G2 校准）；③定义"高事件量"负载（如 ≥10k 事件/秒持续 60s）下 GUI p95 帧间隔 ≤16ms、事件到 UI 可见延迟 ≤2s；④macOS 侧另测扩展对目标 App 建连延迟的影响 |

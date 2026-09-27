@@ -14,7 +14,7 @@
 
 2. **最大的结构性问题：Go/No-Go 机制名义存在、实际不可执行**。企划书 §19 给出"Conditional Go"，需求稿 §1.4 重申 entitlement 是 Go/No-Go 条件，但两份文档都没有给出"多久算长期不获批"的时间阈值、No-Go 触发后的处置路径、以及"Windows beta 先行"在需求层面的落地条目。目前的风险表（§11）只有缓解措施，没有决策规则。
 
-3. **G0 存在被低估的外部依赖**。G0 Gate 只写了"提交 Endpoint Security entitlement + 确认 Network Extension Developer ID 配置"（§10、NFR-3.1）。按 Apple 现行规则，Network Extension 的 content-filter-provider entitlement 同样需要向 Apple 申请审批，不是纯"配置确认"事项。如果属实，G0 实际是两个并行审批，关键路径比文档表述更长。
+3. **G0 存在被低估的外部依赖**。G0 Gate 只写了"提交 Endpoint Security entitlement + 确认 Network Extension Developer ID 配置"（§10、NFR-3.1）。按 Apple 现行规则，Network Extension 的 content-filter-provider entitlement 同样需要向 Apple 申请审批，不是纯"配置确认"事项。如果属实，G0 实际是两个并行审批，关键路径比文档表述更长。〔勘误〕2026-09-27 核实：NE capability 为自助开启、无需审批；"双审批关键路径"不成立，详见 `07-macos-entitlement实测.md` 追加调查。
 
 4. **Gate 验收语普遍缺度量**。五个 Gate 中仅 G2（"10–30 分钟 Session 稳定"，对应 NFR-1.3）接近可判定；G1"单 Session 数据可信"、G3"非安全专业用户可看懂"、G4"真实用户环境可持续使用"均无量化标准，届时无法客观判定通过与否。
 
@@ -27,9 +27,9 @@
 | 编号 | 严重度 | 风险 | 当前覆盖 | 建议 |
 |------|--------|------|----------|------|
 | PM-R01 | 高 | Go/No-Go 无时间阈值："长期不获批"（企划书 §19、需求稿 §8）不可判定，决策点会无限漂移 | §1.4 只确立原则；§11 仅有缓解措施 | 在 §1.4 或 §10 增加检查点：建议 G0 提交后 T+90 天做首次状态评审，T+180 天未获批触发正式 No-Go 评审 |
-| PM-R02 | 高 | NE content-filter entitlement 可能同样需 Apple 审批，G0 将其写成"确认配置"，低估关键路径 | NFR-3.1、§10 G0、§7.1 | 立项第一周核实 NE entitlement 审批要求；若需申请，G0 改为"两项 entitlement 均已提交" |
+| PM-R02 | 高 | NE content-filter entitlement 可能同样需 Apple 审批，G0 将其写成"确认配置"，低估关键路径。〔已核实〕NE 无需审批（2026-09-27），风险解除 | NFR-3.1、§10 G0、§7.1 | 立项第一周核实 NE entitlement 审批要求；若需申请，G0 改为"两项 entitlement 均已提交"〔已核实：无需申请〕 |
 | PM-R03 | 高 | "Windows beta 先行"兜底在需求层不闭环：无 Windows 独立发布的 FR/NFR、无 Windows-only Gate 定义、无签名/分发要求 | §11 风险表提及一次，无对应需求条目 | 新增 Windows 独立发布路径条目（见 PM-N03）；G4 拆分为 G4a（Windows beta）/G4b（macOS 正式版）或明确串行关系 |
-| PM-R04 | 高 | entitlement 未获批期间 macOS 侧 G1 PoC 的可行性路径未定义：ES System Extension 在审批前能否以开发签名跑通，决定 macOS PoC 是否被 block | §10 G1 写"macOS/Windows 各抓取一个目标 App"，默认双平台并行可行 | G0 输出物中增加"macOS PoC 无 entitlement 情况下的技术验证路径"结论（dev-signed ES / 虚拟机 / 降级到 NE-only 等） |
+| PM-R04 | 高 | entitlement 未获批期间 macOS 侧 G1 PoC 的可行性路径未定义：ES System Extension 在审批前能否以开发签名跑通，决定 macOS PoC 是否被 block。〔已核实〕SIP 开启下 dev-signed exec 即被终止（2026-09-25 实测）；SIP-off 可运行，PoC 不被 block | §10 G1 写"macOS/Windows 各抓取一个目标 App"，默认双平台并行可行 | G0 输出物中增加"macOS PoC 无 entitlement 情况下的技术验证路径"结论（dev-signed ES / 虚拟机 / 降级到 NE-only 等） |
 | PM-R05 | 中 | 全部里程碑无时间维度与资源假设，无法评估并行/串行取舍 | §10 只有工作包与 Gate | 至少给出相对工期假设与人力约束（单人/兼职/全职），据此明确 G1 双平台是并行还是"Windows 先行、macOS 待 entitlement" |
 | PM-R06 | 中 | G1/G3/G4 Gate 验收语缺度量："数据可信""可看懂""可持续使用"无法客观判定 | §10 Gate 列 | G1 加量化标准（如：对照基线工具 FSMonitor/Procmon 的事件覆盖率与归属准确率阈值）；G3 加可用性验收（N 名目标用户完成"它碰了什么/连了哪"任务的完成率）；G4 加 beta 规模、时长、崩溃率上限 |
 | PM-R07 | 中 | 需求↔阶段映射缺失：约 30 条 FR/NFR 无阶段归属，无法做阶段级范围控制与进度度量 | 仅 5 条标注阶段（NFR-3.1、NFR-1.3、NFR-4.1、FR-2.4、FR-6.6） | 新增"需求-阶段映射表"（见下文映射缺口节），每条 P0 需求落到 G1–G4 之一 |
@@ -76,7 +76,7 @@
 ### 修改现有条目
 
 - **PM-M01｜§1.4 Go/No-Go**：补充可判定条件——"G0 提交后 T+90 天未获批 → 状态评审并决定是否全量转 Windows 先行；T+180 天未获批 → 正式 No-Go 评审，macOS 正式版中止，项目处置三选一（Windows-only 继续 / 暂停等待 / 归档），不退化为快照工具维持 §8 结论不变"。
-- **PM-M02｜§10 G0 Gate**：改为"ES 与 NE content-filter 两项 entitlement 均已提交申请（或书面确认 NE 无需审批）；macOS PoC 在无 entitlement 条件下的技术路径已验证并记录结论"。
+- **PM-M02｜§10 G0 Gate**：改为"ES 与 NE content-filter 两项 entitlement 均已提交申请（或书面确认 NE 无需审批）；macOS PoC 在无 entitlement 条件下的技术路径已验证并记录结论"。〔已核实并回写〕NE 无需审批（2026-09-27）；无 entitlement 联调路径结论 = SIP-off 可运行；PRD v1.1 §10 G0 已按此更新。
 - **PM-M03｜§10 G1/G3/G4 Gate**：补度量（对应 PM-R06）：G1"对照基线工具事件覆盖率 ≥ 约定阈值且归属无误判案例"；G3"≥5 名目标用户独立完成核心问题作答"；G4"beta 用户 ≥N 名、连续使用 ≥2 周、崩溃率 ≤X%"。
 - **PM-M04｜§10 阶段表**：增加"需求覆盖"列，落实上节映射表，每条 P0 需求有唯一主归属阶段。
 - **PM-M05｜§11 风险表**：增加三行——NE entitlement 审批不确定性、Windows 代码签名/SmartScreen、需求变更无评审流程；外部依赖清单补 Windows 签名证书。
@@ -108,6 +108,6 @@
 - `ProcessLens_企划书.txt:122-124`：§14 开源建议与品牌入口（需求稿未承接）
 
 ### 尚不确定/需用户确认
-- NE content-filter entitlement 的当前 Apple 审批要求（PM-R02 为立项第一周需核实的事实项，未联网验证）
-- ES System Extension 在 entitlement 未获批时的可开发性路径（PM-R04，需技术验证）
+- NE content-filter entitlement 的当前 Apple 审批要求（PM-R02 为立项第一周需核实的事实项，未联网验证）〔已核实 2026-09-27：无需审批，自助开启〕
+- ES System Extension 在 entitlement 未获批时的可开发性路径（PM-R04，需技术验证）〔已核实：SIP 开启不可行、SIP-off 可运行，见 `07` 实测与追加调查〕
 - FDA 对 ES 采集是否必需（PM-R14，技术澄清项）
